@@ -1,0 +1,9 @@
+[Desktop Entry]
+Encoding=UTF-8
+Terminal=false
+Name=BilibiliDown
+Type=Application
+Exec=bash /mnt/hgfs/workspace-java/BilibiliDown/release/Run-for-Linux.sh
+Icon=/mnt/hgfs/workspace-java/BilibiliDown/release/config/favicon.ico
+Categories=Application;Network; 
+Comment=BilibiliDown from https://github.com/nICEnnnnnnnLee/BilibiliDown

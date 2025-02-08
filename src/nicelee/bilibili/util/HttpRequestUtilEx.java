@@ -86,15 +86,15 @@ public class HttpRequestUtilEx extends HttpRequestUtil {
 						// 开始下载
 						HttpURLConnection conn = connect(specificHeader, url, null);
 						conn.connect();
-						if (conn.getResponseCode() == 403) {
-							Logger.println("403被拒，尝试更换Headers");
-							conn.disconnect();
-							specificHeader.clear();
-							specificHeader.putAll(HttpHeaders.getBiliAppDownHeaders());
-							specificHeader.put("range", String.format(range, min + offset, max));
-							conn = connect(specificHeader, url, null);
-							conn.connect();
-						}
+//						if (conn.getResponseCode() == 403) {
+//							Logger.println("403被拒，尝试更换Headers");
+//							conn.disconnect();
+//							specificHeader.clear();
+//							specificHeader.putAll(HttpHeaders.getBiliAppDownHeaders());
+//							specificHeader.put("range", String.format(range, min + offset, max));
+//							conn = connect(specificHeader, url, null);
+//							conn.connect();
+//						}
 						// 获取所有响应头字段
 						// Map<String, List<String>> map = conn.getHeaderFields();
 						// Logger.println("Content-Range" + map.get("Content-Range"));
@@ -104,7 +104,7 @@ public class HttpRequestUtilEx extends HttpRequestUtil {
 						} catch (Exception e) {
 							e.printStackTrace();
 							Logger.println(specificHeader.get("range"));
-							BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+							BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getErrorStream(), "utf-8"));
 							String temp;
 							while ((temp = reader.readLine()) != null) {
 								System.out.println(temp);

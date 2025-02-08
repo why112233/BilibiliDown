@@ -1,6 +1,7 @@
 package nicelee.bilibili.util;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -14,6 +15,7 @@ import java.net.HttpCookie;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +26,7 @@ import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
 
 import nicelee.bilibili.enums.StatusEnum;
+import nicelee.bilibili.exceptions.Status412Exception;
 import nicelee.ui.Global;
 
 public class HttpRequestUtil {
@@ -43,6 +46,11 @@ public class HttpRequestUtil {
 	protected volatile boolean bDown = true;
 	// Cookie管理
 	CookieManager manager;
+	
+	static Charset UTF_8;
+	static {
+		UTF_8 = Charset.forName("UTF-8");
+	}
 
 	public HttpRequestUtil() {
 		this(defaultManager);
@@ -71,6 +79,11 @@ public class HttpRequestUtil {
 	public void stopDownload() {
 		bDown = false;
 		status = StatusEnum.STOP;
+	}
+	
+	public void stopDownloadAsFail() {
+		bDown = false;
+		status = StatusEnum.FAIL;
 	}
 
 	/**
@@ -155,29 +168,33 @@ public class HttpRequestUtil {
 			HttpURLConnection conn = connect(headers, urlNameString, null);
 			conn.connect();
 
-			if (conn.getResponseCode() == 403) {
-				Logger.println("403被拒，尝试更换Headers");
-				conn.disconnect();
-				headers = HttpHeaders.getBiliAppDownHeaders();
-				offset = modifyHeaderMapByDownloaded(headers, raf, fileDownloadPart, offset);
-				conn = connect(headers, urlNameString, null);
-				conn.connect();
-			}
+//			if (conn.getResponseCode() == 403) {
+//				Logger.println("403被拒，尝试更换Headers");
+//				conn.disconnect();
+//				headers = HttpHeaders.getBiliAppDownHeaders();
+//				offset = modifyHeaderMapByDownloaded(headers, raf, fileDownloadPart, offset);
+//				conn = connect(headers, urlNameString, null);
+//				conn.connect();
+//			}
 			// 获取所有响应头字段
 			Map<String, List<String>> map = conn.getHeaderFields();
 			// 遍历所有的响应头字段
 //			for (String key : map.keySet()) {
 //				System.out.println(key + "--->" + map.get(key));
 //			}
-			System.out.printf("文件大小: %s 字节.\r\n", map.get("Content-Length"));
+			List<String> conLen = map.get("Content-Length");
+			if(conLen == null)
+				conLen = map.get("content-length");
+			System.out.printf("文件大小: %s 字节.\r\n", conLen);
 
-			totalFileSize = offset + Long.parseUnsignedLong(map.get("Content-Length").get(0));
+			if(conLen != null)
+				totalFileSize = offset + Long.parseUnsignedLong(conLen.get(0));
 			try {
 				inn = conn.getInputStream();
 			} catch (Exception e) {
 				e.printStackTrace();
 				Logger.println(headers.get("range"));
-				BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
+				BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getErrorStream(), "utf-8"));
 				String temp;
 				while ((temp = reader.readLine()) != null) {
 					System.out.println(temp);
@@ -214,6 +231,7 @@ public class HttpRequestUtil {
 		}
 		// 使用finally块来关闭输入流
 		finally {
+			buffer = null;
 			// System.out.println("下载Finally...");
 			ResourcesUtil.closeQuietly(inn);
 			ResourcesUtil.closeQuietly(raf);
@@ -297,7 +315,8 @@ public class HttpRequestUtil {
 		try {
 			HttpURLConnection conn = connect(headers, url, listCookie);
 			conn.connect();
-
+			if(conn.getResponseCode() == 412)
+				throw new Status412Exception("HTTP返回状态码为412");
 			String encoding = conn.getContentEncoding();
 			InputStream ism = conn.getInputStream();
 			if (encoding != null && encoding.contains("gzip")) {// 首先判断服务器返回的数据是否支持gzip压缩，
@@ -308,11 +327,18 @@ public class HttpRequestUtil {
 				ism = new InflaterInputStream(ism, new Inflater(true));
 			}
 
-			in = new BufferedReader(new InputStreamReader(ism, "UTF-8"));
-			String line;
-			while ((line = in.readLine()) != null) {
-				result.append(line).append("\r\n");
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			byte[] buffer = new byte[256];
+			int len = ism.read(buffer);
+			while (len > 0) {
+				out.write(buffer, 0, len);
+				len = ism.read(buffer);
 			}
+			
+			result.append(new String(out.toByteArray(), UTF_8));
+			out.close();
+		} catch (Status412Exception e) {
+			throw e;
 		} catch (Exception e) {
 			System.out.println("发送GET请求出现异常！" + e);
 			e.printStackTrace();
@@ -352,6 +378,9 @@ public class HttpRequestUtil {
 			dos.writeBytes(param);
 			dos.flush();
 			dos.close();
+			
+			if(conn.getResponseCode() == 412)
+				throw new Status412Exception("HTTP返回状态码为412");
 
 			String encoding = conn.getContentEncoding();
 			InputStream ism = conn.getInputStream();
@@ -359,14 +388,19 @@ public class HttpRequestUtil {
 			if (encoding != null && encoding.contains("gzip")) {
 				ism = new GZIPInputStream(conn.getInputStream());
 			}
-			in = new BufferedReader(new InputStreamReader(ism));
-			String line;
-			while ((line = in.readLine()) != null) {
-				line = new String(line.getBytes(), "UTF-8");
-				result.append(line);
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			byte[] buffer = new byte[256];
+			int len = ism.read(buffer);
+			while (len > 0) {
+				out.write(buffer, 0, len);
+				len = ism.read(buffer);
 			}
+			result.append(new String(out.toByteArray(), UTF_8));
+			out.close();
+		} catch (Status412Exception e) {
+			throw e;
 		} catch (Exception e) {
-			System.out.println("发送GET请求出现异常！" + e);
+			System.out.println("发送POST请求出现异常！" + e);
 		} finally {
 			ResourcesUtil.closeQuietly(in);
 		}

@@ -1,0 +1,61 @@
+name: Deploy Document
+
+on:
+  push:
+    branches:
+      - docs
+  workflow_dispatch:
+    inputs:
+      nothing:
+        description: 'This param do nothing'     
+        required: false
+        type: boolean
+        default: true
+  
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # https://stackoverflow.com/questions/60868897/git-log-dates-incorrect-in-a-github-action
+          fetch-depth: '0'
+          ref: docs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Build
+        run: npm run docs:build
+
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/.vitepress/dist
+      - name: Sync Push to Gitee
+        env:
+            GITEE_AUTH: ${{ secrets.GITEE_AUTH }}
+        if: ${{ env.GITEE_AUTH != ''}}
+        run: |
+            echo "https://$GITEE_AUTH@gitee.com/" > .credential
+            git config --local credential.helper "store --file=.credential"
+            git remote add gitee https://gitee.com/NiceLeee/BilibiliDown.git
+            branch_name=`git rev-parse --abbrev-ref HEAD`
+            # git fetch --unshallow origin "$branch_name"
+            git push -f gitee "$branch_name"
+            rm -f .credential
+      - name: Sync Push to Bitbucket
+        env:
+            BITBUCKET_TOKEN: ${{ secrets.BITBUCKET_TOKEN }}
+        if: ${{ env.BITBUCKET_TOKEN != ''}}
+        run: |
+            echo "https://x-token-auth:$BITBUCKET_TOKEN@bitbucket.org/" > .credential
+            git config --local credential.helper "store --file=.credential"
+            git remote add bitbucket https://bitbucket.org/niceleeee/bilibilidown.git
+            branch_name=`git rev-parse --abbrev-ref HEAD`
+            # git fetch --unshallow origin "$branch_name"
+            git push -f bitbucket "$branch_name"
+            rm -f .credential

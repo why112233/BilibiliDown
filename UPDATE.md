@@ -1,4 +1,307 @@
-## UPDATE  
+## UPDATE
+* V6.38 `2024-12-22`
+    * 修复：在查询清晰度时带上cookie，这是因为某些视频必须登录才能查看，比如`BV1fx411x7QS` #240
+    * 优化：对查询清晰度的API进行了升级，并增强了鲁棒性(虽然旧的也还能用)
+    * 新增：提供多种清晰度查询策略，目的是减少不必要的网络请求次数
+        + `tryNormalTypeFirst` 先尝试普通视频，报错后尝试其它类型; 绝大多数情况1次网络请求，少数2次。  
+        + `judgeTypeFirst` 先判断视频类型，再进行查询; 2次网络请求。**这是旧版本的查询策略**。  
+        + `returnFixedValue` 不查询，直接返回固定值; 无网络请求。**这是新版本的默认查询策略**。  
+        + 无论是何策略，若单个BV下子视频数量多于5，总会返回固定列表。  
+        + 引入该功能的主要原因是`BV1g5pqeBEXP`，这个互动视频有上百个片段，查询清晰度会“卡死”在那，实际上后台一直在获取每个视频的清晰度。但这是不必要的。  
+        + 不建议在配置文件中修改该值。若实在有需要，可以在菜单栏临时变更策略，程序关闭后失效。  
+    * 新增：当`clipTitle`和视频标题`avTitle`一致时，允许将`clipTitle`置空 #237
+        + `bilibili.name.format.clipTitle.allowNull`为`true`时功能启用(默认关闭)，此时可以配合条件判断进行使用，避免文件名出现冗余的重复信息。  
+    * 其它详见[V6.37...V6.38](https://github.com/nICEnnnnnnnLee/BilibiliDown/compare/V6.37...V6.38)
+* V6.37 `2024-11-24`
+    * 修复：纠正一键下载时，以日期作为条件判断不准确的错误 #235
+    * 修复：更新字幕api的解析 #232
+    * 其它详见[V6.36...V6.37](https://github.com/nICEnnnnnnnLee/BilibiliDown/compare/V6.36...V6.37)
+* V6.36 `2024-10-27`
+    * 修复：更新合辑视频链接的解析 #225
+    * 修复：纠正互动视频`graph_version`的获取方式
+    * 新增：一键下载：支持以标题/小标题是否匹配正则表达式为条件 #229
+    * 新增：仅下载音频时，允许自定义ffmpeg音频转换命令、自定义音频后缀格式(可能需要ffmpeg支持) #226,#227
+    * 其它详见[V6.35...V6.36](https://github.com/nICEnnnnnnnLee/BilibiliDown/compare/V6.35...V6.36)
+* V6.35 `2024-09-25`
+    * 修复：解决配置面板修改配置后无法保存的问题 #216
+    * 其它详见[V6.34...V6.35](https://github.com/nICEnnnnnnnLee/BilibiliDown/compare/V6.34...V6.35)
+* V6.34 `2024-09-03`
+    该版本主要用来解决某些使用上的问题，如果您已经可以正常使用，可以忽略该更新。  
+    * 精简jre支持的https加密套件有限，不支持ecc。这会导致默认的ffmpeg源bitbucket下载失败。随着网站加密套件的更新，未来或许还会有更多的`TLS handshake failure`。   
+    这个问题在旧版本可以通过更换ffmpeg源，或者自行获取ffmpeg并在程序设置好path的方式来解决。  
+    新版本为精简JRE添加了模块`jdk.crypto.ec`，用于解决部分HTTPS链接握手出错的问题。  
+    需要注意的是，这个模块在JDK 22被标为deprecated，相关实现会被挪到`java.base`模块。详见[JDK-8312267](https://bugs.openjdk.org/browse/JDK-8312267)   
+    另外，新版本为Windows x64用户打包的`zip`、`msi`添加了精简编译的`ffmpeg.exe`。  
+    
+    * 在转码/合并失败时，现在会提示检查ffmpeg配置。    
+    现在Web端基本上获取不到高清晰度的mp4、flv。随着时间推移，ffmpeg成了必选项，以前的逻辑、设计和提示语都有点过时。   
+    尝试让用户明白三件事情：  
+        + ffmpeg是必需的。
+        + 程序可以提供仅基础功能的精简版编译下载。
+        + 如果计算机里有现成的ffmpeg，可以通过配置进行指定。
+
+    * 修复程序自更新时下载Beta版本报错的问题。    
+        下载Github Action的artifact需要登录，虽然不甘心，但可以理解。  
+        下载链接301到新链接后，继承使用原来的header会报错，这个行为有点抽象。  
+        大部分工具都是follow redirect可以直接下载的，但这里的逻辑是那小部分。    
+     
+    * 现在程序会检查数据目录的`写`权限。#214  
+        不推荐将程序放在系统盘。如果你这么做了，你需要进行额外的操作（三选一）：  
+        + 以管理员身份运行程序(不推荐)
+        + 参考#214 将程序目录设置为可写可修改
+        + 设置另外的有权限的数据目录，通过传入JVM参数`-Dbilibili.prop.dataDirPath`进行指定。不会可以在参考文档中搜索关键词。    
+    
+    * 部分环境可能出现显示错误的情况。#213  
+    问题存在，但找不到原因。可以通过更换入口类规避。  
+    现在可以通过传入JVM参数`-Dbilibili.prop.mainClass`参数给`launch.jar`，来指定`INeedBiliAV.jar`的运行入口。 
+        
+        修改`BilibiliDown.cfg`
+        ```
+        [Application]
+        app.classpath=launch.jar
+        app.mainclass=nicelee.memory.App
+
+        [JavaOptions]
+        java-options=-Dfile.encoding=utf-8
+        java-options=-Dbilibili.prop.mainClass=nicelee.ui.FrameMain_v3_4
+        ```
+        
+        或者脚本
+        `java -Dbilibili.prop.mainClass=nicelee.ui.FrameMain_v3_4 -jar launch.jar`
+    
+* V6.33  `2024-08-18` 
+    * 新增: release 附件中`win64_jre`压缩文件加入`exe`程序
+    * 新增: 添加专栏图片解析
+    * 新增: 添加专栏文集图片解析
+    * 新增: 添加图文动态解析
+    * 新增: 添加图文动态个人收藏解析
+    * 新增: 可以JVM传入参数`-Dbilibili.prop.dataDirPath={dataDirPath}`来指定数据文件夹位置(可以不是程序所在目录)
+    * 新增: 可以JVM传入参数`-Dbilibili.prop.log=true/false`来尽可能减少打印信息
+    * 新增: 可以在登录时获取服务器时间并以之为基准
+    * 新增(ui): 配置面板中，针对文件/文件夹类型的配置，可以通过文件选择器来选择路径
+    * 新增(ci): 现在可以手动触发release ci，此时可以选择是否同步上传代码、附件到第三方
+    * 新增(ci): 现在会将`commit hash`,`workflow id`信息写入作品信息页面，`buildTime`改为`GMT+8`时区
+    * 已知问题： jpackage 打包的exe程序无法自重启 [JDK-8325924](https://bugs.openjdk.org/browse/JDK-8325924)/[JDK-8325203](https://bugs.openjdk.org/browse/JDK-8325203)
+    
+* V6.32  `2024-07-05`  
+    * 修复: 当编码不为`utf8`时，下载弹幕乱码的问题。[#197](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/197)
+    * 修复: 卸载脚本在删除文件时考虑路径中包含有空格的情况
+    * 修复: 当搜索UP主视频的结果存在课程时，跳过课程解析。`e.g. https://space.bilibili.com/345024422/search/video?keyword=保姆`
+    * 修复: 当视频链接中包含 au+数字 时，会被识别成音频[#197](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/204)
+    * 修复: 保存配置时，考虑多行配置同一个key的情况
+    * 新增: 现在可以提供Windows amd64下的安装包
+    * 新增: 增加配置，可以在软件启动时开始按计划周期性批量下载[#199](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/199)
+    * 新增: 现在可以替换音视频下载地址的host，建议在走PCDN表现不佳的情况下尝试使用
+        + 可能使情况变好，也可能更坏
+        + 右上角菜单`配置` -> `音视频链接替换host?` -> `替换` （临时启用，程序重启后失效）
+        + 设置`bilibili.download.host.forceReplace = true`  （持久化生效）
+    * 新增: 现在可以强制音视频下载走http而不是https
+        + 下载链接如果指定了端口的话，那就只能走https协议，无论配置怎么样
+    * 优化: 下载队列的url存活时间超过90min(参数可调整)时，会重新查询url再进行下载  
+        + 一次生成这么多任务，_**你有点太极端了**_
+        + 在这个场景下，最好设置成：失败重试/继续下载任务时，重新查询下载链接(搜`retry`或`reloadDownloadUrl`)  
+    * 优化: 失败重试/暂停后继续下载的任务优先级更高，而不是排在任务队列的最后
+    * 优化: `UP主所有视频`支持更多类型的url
+        + 现在增加支持`https://space.bilibili.com/336399506/?spm_id_from=333.999.0.0`
+        + 以前的类型参数是直接跟在数字后面，而不是`/`后面
+            + `https://space.bilibili.com/336399506/`
+            + `https://space.bilibili.com/336399506?spm_id_from=333.999.0.0`
+    * 优化: Windows下jre11版本、modules更新 
+        + 版本`Oracle 11+28 2018-09-25`升级为`Temurin 11.0.23+9-LTS 2024-04-16`
+        + modules
+            + 前`java.base,java.compiler,java.datatransfer,java.desktop,java.management`
+            + 后`java.base,java.compiler,java.datatransfer,java.desktop,java.management,java.security.sasl,java.xml,java.logging` 
+    * [帮助文档]修复: 导航提示汉化覆盖完毕
+    * [帮助文档]新增: 添加搜索功能
+    * [帮助文档]优化: VitePress由`alpha`升级为`release`版本
+    * [帮助文档]优化: Github Pages由读取指定分支改为Actions附件上传
+    * 其它常规优化，详见[V6.31...V6.32](https://github.com/nICEnnnnnnnLee/BilibiliDown/compare/V6.31...V6.32)
+    
+* V6.31  `2024-05-08`  
+    * 新增: 重命名文件失败时，尝试添加序号继续重命名。[#185](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/185)
+        + 目的地址存在文件时，会在约定的名称末尾尝试添加`(01)、(02)...`这样的序号
+        + 通过配置`bilibili.name.autoNumber`可以开启/关闭该功能
+    * 优化: 查询UP主所有链接时添加`dm_img`系列参数，防止返回352。（不登录也能用了）
+    * 修复: 查询UP主所有链接时相关请求添加`referer`，防止返回412。[#192](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/192)
+    * 其它常规优化，详见[V6.30...V6.31](https://github.com/nICEnnnnnnnLee/BilibiliDown/compare/V6.30...V6.31)
+    
+* V6.30  `2024-02-23`  
+    * 新增: 添加功能，可以周期性地进行“一键下载”，并通报结果。  
+    * 优化: 现在按平台和架构编译了四个版本ffmpeg，缺省时符合条件的会提示进行下载：`win_amd64`、`linux_amd64`、`win_arm64`、`linux_arm64`  
+    * 优化: 现在补充完善了浏览器指纹等方面的cookie，期望是预防风控[#177](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/177), [#180](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/180)
+        + 因为尚不清楚相关机制，目前`通过API上传指纹`这一动作只在`刷新cookie`时才会进行。在遇到风控时，不妨先试一试菜单栏里的`刷新cookie`选项。  
+        + 现在最好不要随意修改配置的UA，如果必要，需要在隐私模式下抓取cookie并抓包相应API的payload。详见配置页。
+    * 修复: [#182](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/182) 考虑在`UP主所有视频`类型的链接解析时，keyword中含有空格的情况。
+    * 删除: 移除解析分页链接时`promptAll`模式相关代码。  
+
+* V6.29  `2023-12-01`  
+    * 新增(GUI): 菜单配置栏添加`下载前先查询记录?`配置项，更改后可临时开启/关闭仓库功能。重启后失效。  
+    * 删除(GUI): 菜单配置栏删除`下载策略`配置项。  
+    * 优化(GUI): [issues 165](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/165)点击`关闭全部Tab页`后，弹出提示框。  
+    * 优化: [issues 167](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/167) 优先清晰度添加`字幕`/`弹幕`选项，用于快速批量下载。  
+        + 需要注意，`字幕`/`弹幕`不计入下载记录，因而也没有相应判断。  
+        + 需要注意，视频、对应字幕、弹幕的下载任务不能同时存在于下载面板。你需要清空下载任务以后再继续。    
+    * 优化: 更新适用范围更广的AV和BV转换方式。
+    * 优化: 代码和附件都镜像到了`Bitbucket`，程序里面也添加了镜像源。这意味着程序自升级门槛更低了。    
+
+    
+* V6.28  `2023-10-14`  
+    * 优化: 更新视频链接获取方式，优化实际清晰度判断逻辑。  
+        现在，即使不登录也能获取1080P DASH视频(但后续不做任何保证)。
+    * 优化: [issues 157](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/157) 下载完毕后buffer置空。在不清空任务面板的情况下，可以容纳多得多的下载任务。
+    * 优化: 镜像源去除Imagekit, 添加Twicpics。
+    * 优化(GUI): 设置面板的内容高度微调，关于页面内容调整。
+    
+* V6.27  `2023-08-13`  
+    * 修复: [issues 155](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/155) 重写对于UP主所有视频的分页查询逻辑  
+        需要注意的是，若UP主上传有多BV的合集，此时自定义文件名中的参数`pDisplay`将不再准确。  
+    * 修复: [issues 152](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/152) 考虑只有杜比视界而没有杜比音效的解析场景(e.g. BV1SN411A7KT)  
+    * 优化: [issues 151](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/151) 增加配置`bilibili.tab.display.previewPic`，可以开启/关闭Tab页的视频封面预览 
+    * 优化: 通过配置`bilibili.login.cookie.tryRefreshOnStartup`，可以使程序在每次打开时尝试刷新cookie。不再需要手动点击对应菜单。  
+    
+* V6.26  `2023-06-06`  
+    * 修复: [issues 146](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/146),[issues 147](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/147) 解决api更换导致的UP主所有视频无法查询的问题  
+    * 修复: [issues 149](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/149), 作品信息页面尝试兼容mac下的UI布局 
+    * 优化: [issues 140](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/140) 卸载脚本增加更多提示 
+    * 优化: [issues 141](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/141) 增加配置`bilibili.alert.qualityUnexpected`，可以开启/关闭对非期望的低画质清晰度视频的判断
+    * 优化: [issues 145](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/145) 增加相关配置，可以针对不同分辨率设置不同的视频编码优先级
+    * 优化: 现在可以直接在程序代码中刷新cookie，而不必再打开浏览器
+    
+* V6.25  `2023-03-23`  
+    * 修复`V6.24`引入的一个bug，该bug导致jar包路径存在空格或者中文时，程序不能正确运行。  
+    * 优化: 出现报错弹窗时，输出更详细的异常信息
+    
+* V6.24  `2023-02-22`  
+	* 新增: 现在可以通过双击/命令行调用`launch.jar`启动程序。  
+		* `launch.jar`会先将`INeedBiliAV.jar`加载到内存，然后再调用。这样原来的jar包就可以被删除，便于程序自更新。    
+		* 当然，如果不考虑更新的问题，通过双击/命令行调用`INeedBiliAV.jar`启动程序也是可以的。    
+		* 如果你是通过旧版本的自更新升级上来的，照旧使用不会有任何问题。
+	* 修复: 一键下载的优先清晰度现在不仅受配置文件控制，还受菜单栏控制
+	* 优化: 可以通过配置`bilibili.dash.ffmpeg.command.merge`调整DASH类型的音视频FFMPEG合并命令
+		*  经测试，配合全功能编译的FFMPEG，指令`-hwaccel cuda`似乎有点效果，详见[FFmpegTest](/src/nicelee/test/junit/FFmpegTest.java)。   
+			该指令理论上可以借助NVIDIA硬解，但是，监控显示GPU的调用率一直是0%，就很费解。  
+	* 优化: 现在，所有的提示框文本都能够被选择并复制(javax.swing.JOptionPane -> nicelee.ui.item.JOptionPane)
+	* 优化: 现在，可以通过配置选择是否输出ffmpeg的处理过程
+	* 优化: 历史记录缓存使用`ConcurrentHashMap`,而不是`CopyOnWriteArraySet`
+	* 优化: 现在，程序理论上总是会使用`utf-8`编码而不是默认编码(不再需要设置`file.encoding=utf-8`)
+	* 优化: 现在，程序理论上可以在任意工作目录正常运行(不再需要cd到jar包所在目录)
+	
+* V6.23  `2023-01-22`  
+    * 新增: 在设置Github token后，可以在菜单栏选择更新Beta版本，省去使用浏览器打开Github Action的步骤
+        + `bilibili.github.token = [github token]`  
+        + 似乎JRE下重定向的域名`pipelines.actions.githubusercontent.com`会被连接重置，但JDK不受影响。  
+    * 新增: 实现最小化到系统托盘功能
+        + `bilibili.sysTray.enable = true/false` 是否开启系统托盘功能
+        + `bilibili.sysTray.minimizeToSystray = true/false` 是否点击最小化按钮到托盘
+        + `bilibili.sysTray.closeToSystray = true/false` 是否点击关闭按钮到托盘
+    * 新增: 音频基础解析`e.g. https://www.bilibili.com/audio/au3688627`
+    * 新增: 音频歌单解析`e.g. https://www.bilibili.com/audio/am33012874`
+    * 新增: 自己创建的默认歌单解析`e.g. https://www.bilibili.com/audio/mycollection/[0-9]+`
+    * 优化: 现在可以从收藏夹中解析到音频了`e.g. https://space.bilibili.com/35849261/favlist?fid=1509975661&ftype=create`
+    * 优化: 现在，API返回412会弹框提示 [issues 90](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/90)
+    * 优化: 现在，查询下载链接解析出错会弹框提示
+    * 优化: 现在，在登录后，查询高质量链接却返回360P清晰度会弹框提示
+    * 修复：API返回实际清晰度不对劲导致的解析错误 `eg. BV1K14y1g7iU 无cookie`
+    * ci: 增加编译后的jar包有效性测试，预防编译失败的低级问题  
+    * ci: 人工触发上传时，可选择目标站点
+    * ci: 将运行的脚本内容从逐渐臃肿的yaml文件中抽离
+      
+* V6.20  `2022-12-30`  
+    * 新增: [issues 124](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/124) 添加只下载音频/视频功能(考虑到ffmpeg的兼容性问题，容器的格式仍然为`mp4`)。  
+    * 优化: [issues 128](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/128) 当点击`加载下载任务`且`task.config`不存在或为空时，log不再显示异常。  
+    * 修复: [issues 129](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/129) 当`bilibili.format=2`且**登录**时，可以下载单独的`1080P`MP4文件(该功能随时有可能失效，不建议使用该设置)。  
+* V6.19  `2022-11-22`  
+    * 新增: [issues 120](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/120)通过配置或菜单，在尝试重新下载时，能够选择是否重新查询下载链接。  
+    * 新增: 通过配置，DASH方式视频可以选择编码优先级；音频可以选择码率优先级。  
+        另外，音频可以选择`杜比`或者`Hi-Res无损`，但是需要`ffmpeg`的配合(Win64用户可以删除原来的ffmpeg.exe再重启程序)。  
+    * 优化: 默认的`ffmpeg.exe`使用了ffmpeg master分支的较新的编译
+    * 优化: Actions自动编译打包时写入相关信息，你可以`关于` -> `作品信息`，在界面左上角进行查看
+    * 优化：在需要创建socketServer时仅监听本地，避免弹出防火墙提示
+
+* V6.18  `2022-10-24`  
+    * 修复: [issues 117](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/117)下载格式为单独MP4时，总是返回低画质的视频  
+    * 优化: [issues 40](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/40)分页查询的Tab页面添加了`下一页`按钮  
+    * 优化: `一键下载`功能添加对非`分页查询类型`的链接的支持  
+        + 这个功能优化是[针对下载视频清晰度模糊的补救措施](https://nicennnnnnnlee.github.io/BilibiliDown/guide/frequently-asked/how-to-redownload-videos)  
+        某种程度上可以做到根据提供的BV号列表进行批量下载(**不宜过多!不宜过多!不宜过多!**)
+    * 优化: Tab页面预览图更改为显示当前页的第一个视频的预览图  
+    * 优化: 辅助配置面板增加筛选功能  
+    * 优化: 移除操作菜单中的`转换仓库`功能  
+    * 优化: release添加附件SHA1校验值
+    * 优化: 程序以及ffmpeg额外上传至多个渠道(白嫖不稳定，仅供备用)   
+    
+* V6.17  `2022-09-30`  
+    * 修复: [issues 114](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/114) 使用带指纹的cookies查询用户上传视频
+    * 优化: CI - 新增人工触发并生成程序到artifacts的工作流，目的是减少Release频率。
+    
+* V6.16  `2022-09-13`  
+	* 调整：各登录方式额外保存`refresh_token`信息，用于Cookie刷新
+    * 新增：支持Cookie刷新操作
+    * 新增：程序使用说明文档<https://nICEnnnnnnnLee.github.io/BilibiliDown>    
+    * 新增：新推出**一键下载功能**，点击一下，下载配置定义的所有。    
+		你只需要花3min写一个配置，以后会方便很多。详见[进阶使用-通过配置一键下载](https://nICEnnnnnnnLee.github.io/BilibiliDown/guide/advanced/quick-batch-download)  
+    * 优化：UP主合集链接解析现只需要发出两次查询的网络请求。  
+		现在大部分链接解析的网络请求次数并不与分页大小相关，您可以**尝试**将该配置由`5`改为`20`。  
+		即`bilibili.pageSize = 20`
+    * 优化：为了避免文件名过长而出现问题，现将字段`clipTitle`从**默认配置**的文件名中移除
+	* 优化：更新扫码登录API
+    * 修复：Linux快捷方式的运行方式没有指定正确的工作目录  
+* V6.15  `2022-08-20`  
+    * 优化：补充实现在Windows平台外的一键更新功能
+    * 优化：自定义Button添加抗锯齿设置[issues 107](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/107) 
+    * 优化：自定义文件名的格式字符串新增否定类型的条件语句 
+    * 优化：`package.sh`换行符去掉 `\r`[issues 107](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/107)  
+    * 优化运行、更新的脚本逻辑[issues 110](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/110)  
+    
+* V6.14  `2022-07-28`
+    * 优化: [issues 87](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/87) 可以通过配置`app.config`设置下载任务的相关间隔  
+    ```
+    #每个下载任务完成后的等待时间(ms)
+    bilibili.download.period.between.download = 0
+    #每个关于下载的查询任务完成后的等待时间(ms)
+    bilibili.download.period.between.query = 0
+    ```
+    * 优化： 检查更新时，将显示最新版本的CHANGE LOG
+    * 修复`V6.13`短信验证码登录引起的用户名密码登录失败的问题  
+    
+* V6.13  `2022-07-28`  
+    * 优化：减少release构建的配置数量, 预防版本号与实际不相符的问题
+    * 优化：UP主所有视频解析
+        + 增加url类型`https://space.bilibili.com/378034/search/video?tid=3&keyword=歌曲&order=stow`
+        + 更换api，减少搜索url类型外的解析的网络请求次数
+    * 新增： 合集解析
+        + 针对url类型`https://space.bilibili.com/593987248/channel/collectiondetail?sid=508765`
+        + 该类型解析会针对合集的每一个BV进行查询，导致较多网络请求。  
+            请不要在短时间内打开过多该类型Tab页，以免被BAN
+    * 新增： 视频列表解析
+        + 老版本频道channel解析仍然生效，但在网页端已经找不到该类型的链接了  
+        `https://space.bilibili.com/378034/channel/detail?cid=189`
+        + 新版本针对的链接类型如下  
+        ```
+        https://space.bilibili.com/378034/channel/seriesdetail?sid=918669
+        https://www.bilibili.com/medialist/play/378034?from=space&business=space_series&business_id=918669&desc=1
+        ```
+        + 以上三种链接内容实质上是相同的  
+    * 新增： 可通过配置文件设置System Property
+    * 新增： 可通过配置文件设置HTTP请求的UserAgent
+    * 新增： 短信验证码登录方式  
+    * 新增： 用户名密码登录方式  
+        + 需要打开浏览器，人工通过极验验证码
+        + 如果提示风控，请更改密码之后再进行尝试
+    * 修复： java11 高分辨率时界面的缩放比不恰当的问题
+    * 修复： 运行时增加`-Dhttps.protocols=TLSv1.2`参数，防止tls handshake failure
+    
+* V6.10  `2022-07-24`  
+    * 新增：Release打包增加了附带精简jre11的选项, 为没有Java环境的win64用户提供了另一种可能。    
+      不要再问我
+      [#99](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/99)
+      [#68](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/68)
+      [#12](https://github.com/nICEnnnnnnnLee/BilibiliDown/issues/12)
+      为什么`win找不到javaw?`了，真的。
+    * 新增：尝试外链MP4解析方式，该方法无法选择清晰度，一般返回1080P，不需要音视频分离再使用ffmpeg合并  
+        `bilibili.format = 0 for MP4(音视频分离合并), 1 for FLV, 2 for MP4(无法选择清晰度)`
+        
+        如果你是Win64用户,且没有java环境，请下载`*.jre11_win_x64.zip`
 * V6.9  `2022-06-27`  
     * 新增：下载任务保存/加载功能
     * 新增：恢复对MP4/FLV下载格式优先选择的支持

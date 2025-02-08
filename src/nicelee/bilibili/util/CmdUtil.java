@@ -2,11 +2,15 @@ package nicelee.bilibili.util;
 
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.lang.ProcessBuilder.Redirect;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -18,21 +22,32 @@ import nicelee.bilibili.model.VideoInfo;
 import nicelee.bilibili.util.check.FlvMerger;
 import nicelee.bilibili.util.convert.ConvertUtil;
 import nicelee.ui.Global;
-import nicelee.ui.thread.StreamManager;
 
 public class CmdUtil {
 
 	public static String FFMPEG_PATH = "ffmpeg";
-
+	public static File DEFAULT_WORKING_DIR = null;
+	private static final File NULL_FILE = new File(
+            (System.getProperty("os.name")
+                    .startsWith("Windows") ? "NUL" : "/dev/null")
+    );
+	private static final Redirect DISCARD = Redirect.to(NULL_FILE); // 为了兼容 java8
+	
 	public static boolean run(String cmd[]) {
+		return run(cmd, DEFAULT_WORKING_DIR);
+	}
+	public static boolean run(String cmd[], File workingDir) {
 		Process process = null;
 		try {
-			process = Runtime.getRuntime().exec(cmd);
-			StreamManager errorStream = new StreamManager(process, process.getErrorStream());
-			StreamManager outputStream = new StreamManager(process, process.getInputStream());
-			errorStream.start();
-			outputStream.start();
-			// System.out.println("此处堵塞, 直至process 执行完毕");
+			ProcessBuilder pb = new ProcessBuilder(cmd).directory(workingDir);
+            if(Global.debugCmd) {
+            	pb.redirectOutput(Redirect.INHERIT);
+            	pb.redirectError(Redirect.INHERIT);
+            }else {
+            	pb.redirectOutput(DISCARD);
+            	pb.redirectError(DISCARD);
+            }
+			process = pb.start();
 			process.waitFor();
 			System.out.println("process 执行完毕");
 			return true;
@@ -71,32 +86,6 @@ public class CmdUtil {
 		return false;
 	}
 	
-	/**
-	 * 音视频合并转码
-	 * 
-	 * @param videoName
-	 * @param audioName
-	 * @param dstName
-	 */
-	public static boolean convert(String videoName, String dstName) {
-		String cmd[] = createConvertCmd(videoName, null, dstName);
-		File mp4File = new File(Global.savePath + dstName);
-		File video = new File(Global.savePath + videoName);
-		if (!mp4File.exists()) {
-			Logger.println("下载完毕, 正在运行转码程序...");
-			run(cmd);
-			if (mp4File.exists() && mp4File.length() > video.length() * 0.8) {
-				video.delete();
-				return true;
-			}
-			Logger.println("转码完毕");
-		} else {
-			Logger.println("下载完毕");
-			return true;
-		}
-		return false;
-	}
-
 	/**
 	 * 片段合并转码
 	 * 
@@ -179,7 +168,7 @@ public class CmdUtil {
 			File folderDown = new File(Global.savePath);
 			folderDown.mkdirs();
 			File file = new File(folderDown, dstName + ".txt");
-			BufferedWriter bw = new BufferedWriter(new FileWriter(file));
+			BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file), "utf-8"));
 			for (int i = 1; i <= part; i++) {
 				// Windows下
 				// 当-i的Global.savePath路径以/结尾时，会寻找路径Global.savePath + %file
@@ -267,6 +256,14 @@ public class CmdUtil {
 		}
 	}
 
+	private static String replParams(String pattern, String videoName, String audioName, String dstName) {
+		if(audioName == null) audioName = "null";
+		if(videoName == null) videoName = "null";
+		return pattern.replace("{FFmpeg}", FFMPEG_PATH).replace("{SavePath}", Global.savePath)
+				.replace("{VideoName}", videoName).replace("{AudioName}", audioName)
+				.replace("{DstName}", dstName);
+	}
+	
 	/**
 	 * 视频片段合并转码命令
 	 * 
@@ -276,20 +273,26 @@ public class CmdUtil {
 	 * @return
 	 */
 	public static String[] createConvertCmd(String videoName, String audioName, String dstName) {
+		String cmd[] = null;
 		if (audioName == null) {
-			String cmd[] = { FFMPEG_PATH, "-i", Global.savePath + videoName, "-c", "copy", Global.savePath + dstName };
-			String str = String.format("ffmpeg命令为: \r\n%s -i %s -c copy %s", FFMPEG_PATH, Global.savePath + videoName,
-					Global.savePath + dstName);
-			Logger.println(str);
-			return cmd;
+			cmd = new String[]{ FFMPEG_PATH, "-i", Global.savePath + videoName, "-c", "copy", Global.savePath + dstName };
+		} else if (videoName == null) {
+			// cmd = new String[]{ FFMPEG_PATH, "-i", Global.savePath + audioName, "-vn", "-c:a", "copy", Global.savePath + dstName };
+			cmd = Global.ffmpegCmd4AudioOnly.clone();
+			for(int i = 0; i < cmd.length; i++) {
+				cmd[i] = replParams(cmd[i], videoName, audioName, dstName);
+			}
 		} else {
-			String cmd[] = { FFMPEG_PATH, "-i", Global.savePath + videoName, "-i", Global.savePath + audioName, "-c",
-					"copy", Global.savePath + dstName };
-			String str = String.format("ffmpeg命令为: \r\n%s -i %s -i %s -c copy %s", FFMPEG_PATH,
-					Global.savePath + videoName, Global.savePath + audioName, Global.savePath + dstName);
-			Logger.println(str);
-			return cmd;
+//			cmd = new String[]{ FFMPEG_PATH, "-i", Global.savePath + videoName, "-i", Global.savePath + audioName, "-c",
+//					"copy", Global.savePath + dstName };
+			cmd = Global.ffmpegCmd4Merge.clone();
+			for(int i = 0; i < cmd.length; i++) {
+				cmd[i] = replParams(cmd[i], videoName, audioName, dstName);
+			}
 		}
+		String str = String.format("ffmpeg命令为: %s", Arrays.toString(cmd));
+		Logger.println(str);
+		return cmd;
 	}
 
 	/**
@@ -317,7 +320,17 @@ public class CmdUtil {
 				File folder = file.getParentFile();
 				if (!folder.exists())
 					folder.mkdirs();
-				originFile.renameTo(file);
+				if((!originFile.renameTo(file)) && Global.autoNumberWhenFileExists) {// 如果不成功，大概率是文件名重复，在后面加上序号，类似于(01)
+					for(int i = 1; i < 100; i++) {
+						File f = new File(Global.savePath, 
+								String.format("%s(%02d)%s", formattedTitle, i, tail));
+						Logger.println(f.getAbsolutePath());
+						if(!f.exists()) {
+							originFile.renameTo(f);
+							break;
+						}
+					}
+				}
 			} else {
 				File f = new File(Global.savePath, "rename.bat");
 				boolean isExist = f.exists();
@@ -344,7 +357,7 @@ public class CmdUtil {
 	 * @param page
 	 * @return
 	 */
-	static String[] suffixs = {".mp4", ".flv", ".jpg", ".webp", ".png", ".srt", ".ass"};
+	static String[] suffixs = {".mp4", ".flv", ".jpg", ".webp", ".png", ".srt", ".ass", ".m4a", ".flac"};
 	public static File getFileByAvQnP(String avid_q, int page) {
 		String name = avid_q + "-p" + page;
 		Logger.println(name);
@@ -353,6 +366,9 @@ public class CmdUtil {
 			if (f.exists())
 				return f;
 		}
+		File f = new File(Global.savePath, name + Global.suffix4AudioOnly);
+		if (f.exists())
+			return f;
 		return null;
 	}
 
@@ -370,7 +386,9 @@ public class CmdUtil {
 	// ### listOwnerName - 集合的拥有者 e.g. 某某某 （假设搜索的是某人的收藏夹）
 	// public static String formatStr = "avTitle-pDisplay-clipTitle-qn";
 	static Pattern splitUnit = Pattern.compile(
-			"avId|numAvId|pAv\\d?|pDisplay\\d?|qn|avTitle|clipTitle|UpName|UpId|listName|listOwnerName|favTime|cTime|\\(\\:([^ ]+) ([^\\)]*)\\)");
+			"avId|numAvId|pAv\\d?|pDisplay\\d?|qn|avTitle|clipTitle|UpName|UpId|listName|listOwnerName|favTime|cTime|" + 
+			"\\((?<ifOrUnless0>[\\:!])(?<condition0>[^ ]+) (?<format0>[^\\)]*)\\)|" + 
+			"\\[(?<ifOrUnless1>[\\:!])(?<condition1>[^ ]+) (?<format1>[^\\]]*)\\]");
 
 	public static String genFormatedName(String avId, String pAv, String pDisplay, int qn, String avTitle,
 			String clipTitle, String listName, String listOwnerName) {
@@ -398,8 +416,12 @@ public class CmdUtil {
 		paramMap.put("pAv", "" + clip.getPage());
 		paramMap.put("pDisplay", "" + clip.getRemark());
 		paramMap.put("qn", "" + realQN);
-		paramMap.put("avTitle", clip.getAvTitle().replaceAll("[/\\\\]", "_"));
-		paramMap.put("clipTitle", clip.getTitle().replaceAll("[/\\\\]", "_"));
+		String avTitle = clip.getAvTitle().replaceAll("[/\\\\]", "_");
+		String clipTitle = clip.getTitle().replaceAll("[/\\\\]", "_");
+		paramMap.put("avTitle", avTitle);
+		if( !(Global.ctFormatAllowNull && avTitle.equals(clipTitle)) ) {
+			paramMap.put("clipTitle", clipTitle);
+		}
 		paramMap.put("listName", clip.getListName()); // 已确保没有路径分隔符
 		paramMap.put("listOwnerName", clip.getListOwnerName()); // 已确保没有路径分隔符
 		paramMap.put("UpName", clip.getUpName().replaceAll("[/\\\\]", "_"));
@@ -426,10 +448,16 @@ public class CmdUtil {
 		while (matcher.find()) {
 			// 加入匹配单位前的字符串
 			sb.append(formatStr.substring(pointer, matcher.start()));
-			String ifStr = matcher.group(1);// 条件语句
-			if (ifStr != null) {
-				if (paramMap.get(ifStr) != null) {
-					sb.append(genFormatedName(paramMap, matcher.group(2)));
+			int c = 0;
+			String ifOrUnless = matcher.group("ifOrUnless" + c);// 条件语句
+			ifOrUnless = ifOrUnless != null? ifOrUnless : matcher.group("ifOrUnless" + (++c));
+			if (ifOrUnless != null) {
+				String condition = matcher.group("condition" + c);
+				String format = matcher.group("format" + c);
+				if (":".equals(ifOrUnless) && paramMap.get(condition) != null) {
+					sb.append(genFormatedName(paramMap,format));
+				}else if("!".equals(ifOrUnless) && paramMap.get(condition) == null) {
+					sb.append(genFormatedName(paramMap,format));
 				}
 //				Logger.println();
 			} else {

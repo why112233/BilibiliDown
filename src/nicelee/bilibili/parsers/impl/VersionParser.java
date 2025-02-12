@@ -8,6 +8,7 @@ import nicelee.bilibili.annotations.Bilibili;
 import nicelee.bilibili.model.ClipInfo;
 import nicelee.bilibili.model.VideoInfo;
 import nicelee.bilibili.util.Logger;
+import nicelee.ui.Global;
 
 @Bilibili(name = "Version", note = "用于最新的版本下载")
 public class VersionParser extends AbstractBaseParser {
@@ -15,7 +16,7 @@ public class VersionParser extends AbstractBaseParser {
 	//BilibiliDown.v5.3.release.zip
 	//https://github.com/nICEnnnnnnnLee/BilibiliDown/releases/download/V5.3/BilibiliDown.v5.3.release.zip
 	private static final Pattern pattern = Pattern.compile("BilibiliDown\\.v([0-9]+\\.[0-9]+).*\\.zip");
-
+	private static final String PRE_RELEASE_FLAG = "BilibiliDown.PreRelease";
 	String downName;
 	String downUrl;
 	
@@ -25,18 +26,27 @@ public class VersionParser extends AbstractBaseParser {
 	
 	@Override
 	public boolean matches(String input) {
+		if(PRE_RELEASE_FLAG.equals(input)) {
+			downName = downUrl = PRE_RELEASE_FLAG;
+			return true;
+		}
 		matcher = pattern.matcher(input);
 		boolean matches = matcher.find();
 		if (matches) {
 			downName = matcher.group();
 			String tagName = matcher.group(1);
-			String url = "https://github.com/nICEnnnnnnnLee/BilibiliDown/releases/download/V%s/%s";
-			downUrl = String.format(url, tagName, downName);
+			downUrl = getDownUrl(tagName, downName);
 			System.out.println("匹配VersionParser: " + tagName);
 		}
 		return matches;
 	}
 
+	private String getDownUrl(String version, String file) {
+		Logger.println("当前使用的更新源为： " + Global.updateSourceActive);
+		String key = "bilibili.download.update.patterns." + Global.updateSourceActive;
+		String pattern = Global.settings.getOrDefault(key, "https://github.com/nICEnnnnnnnLee/BilibiliDown/releases/download/V{version}/{file}");
+		return pattern.replace("{version}", version).replace("{file}", file);
+	}
 	@Override
 	public String validStr(String input) {
 		return downName;

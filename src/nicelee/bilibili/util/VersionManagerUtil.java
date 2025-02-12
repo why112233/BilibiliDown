@@ -1,14 +1,20 @@
 package nicelee.bilibili.util;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.RandomAccessFile;
 import java.lang.management.ManagementFactory;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+
+import nicelee.ui.item.JOptionPane;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -26,6 +32,7 @@ public class VersionManagerUtil {
 	public static String downName;
 	public static String versionTag;
 	public static String versionName;
+	public static String changelogs;
 
 	/**
 	 * 获取当前最新版本, 并返回与当前版本是否匹配
@@ -43,12 +50,15 @@ public class VersionManagerUtil {
 		JSONObject jObj = new JSONArray(json).getJSONObject(0);
 		versionTag = jObj.getString("tag_name").trim().toLowerCase();
 		versionName = jObj.getString("name");
-
+		changelogs = jObj.getString("body");
+				
 		JSONArray assets = jObj.getJSONArray("assets");
 		for (int i = 0; i < assets.length(); i++) {
 			JSONObject asset = assets.getJSONObject(i);
 			String assetName = asset.getString("name");
-			if (assetName.startsWith("BilibiliDown") && assetName.endsWith(".zip")) {
+			Pattern pAssetName = Pattern.compile("^BilibiliDown.v[0-9\\.]+.release.zip$");
+			//if (assetName.startsWith("BilibiliDown") && assetName.endsWith(".zip")) {
+			if (pAssetName.matcher(assetName).find()) {
 				downName = assetName;
 				downUrl = asset.getString("browser_download_url");
 				break;
@@ -84,6 +94,7 @@ public class VersionManagerUtil {
 	 */
 	public static void downloadLatestVersion() throws Exception {
 		if (!queryLatestVersion()) {
+			JOptionPane.showMessageDialog(null, changelogs, "更新日志", JOptionPane.INFORMATION_MESSAGE);
 			VideoInfo avInfo = new INeedAV().getVideoDetail(downName, 0, false);
 			DownloadRunnable downThread = new DownloadRunnable(avInfo, avInfo.getClips().get(1234L), 0);
 			Global.queryThreadPool.execute(downThread);
@@ -113,8 +124,9 @@ public class VersionManagerUtil {
 	 * 解压出包中的"INeedBiliAV.jar"
 	 */
 	public static void unzipTargetJar(String downName) throws IOException {
-		File targetfolder = new File("update/");
-		ZipInputStream zi = new ZipInputStream(new FileInputStream("update/" + downName));
+		File targetfolder = new File(ResourcesUtil.baseDirectory(), "update");
+		File zipFile = new File(targetfolder, downName);
+		ZipInputStream zi = new ZipInputStream(new FileInputStream(zipFile));
 		ZipEntry ze = null;
 		FileOutputStream fo = null;
 		byte[] buff = new byte[1024];
@@ -124,6 +136,17 @@ public class VersionManagerUtil {
 		File dstFile = new File(targetfolder, "INeedBiliAV.update.jar");
 		if (dstFile.exists()) {
 			dstFile.delete();
+		}
+		// 如果为pre release, 那么先解压缩, 得到新的 ZipInputStream
+		if(downName.contains("pre-release")) {
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			ze = zi.getNextEntry();
+			while ((len = zi.read(buff)) > 0)
+				out.write(buff, 0, len);
+			out.close();
+			zi.closeEntry();
+			zi.close();
+			zi = new ZipInputStream(new ByteArrayInputStream(out.toByteArray()));
 		}
 		while ((ze = zi.getNextEntry()) != null) {
 			if ("INeedBiliAV.jar".equals(ze.getName())) {
@@ -139,6 +162,24 @@ public class VersionManagerUtil {
 		zi.close();
 	}
 
+	public static void trySelfUpdate(String code) {
+		try {
+			Class<?> cls = Class.forName("nicelee.memory.App", true, 
+					VersionManagerUtil.class.getClassLoader());
+			// 如果是由launch.jar加载，此时可以直接删除
+			File updateJar = ResourcesUtil.search("update/INeedBiliAV.update.jar");
+			File coreJar = ResourcesUtil.search("INeedBiliAV.jar");
+			if(coreJar.delete() && updateJar.renameTo(coreJar)) {
+				if("1".equals(code)) {
+					cls.getDeclaredMethod("restartApplication").invoke(null);
+				}
+				System.exit(1);
+			}
+		}catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
 	/**
 	 * 运行bat文件，并关闭当前程序 (bat文件删除旧的jar文件, 替换新的jar文件，替换完成后重新打开程序)
 	 * <p>
@@ -146,13 +187,22 @@ public class VersionManagerUtil {
 	 * </p>
 	 */
 	public static void RunCmdAndCloseApp(String code) {
+		trySelfUpdate(code);
 		try {
+			String pid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
+			File dir = ResourcesUtil.baseDirFile();
 			if(System.getProperty("os.name").toLowerCase().contains("windows")) {
-				String pid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
 				String cmd[] = { "cmd", "/c", "start", "update.bat", code, pid };
-				CmdUtil.run(cmd);
+				CmdUtil.run(cmd, dir);
 			}else {
-				//TODO
+				System.out.println(System.getProperty("os.name").toLowerCase());
+				copy(VersionManagerUtil.class.getResourceAsStream("/resources/update.sh"), new File(ResourcesUtil.baseDirectory(), "update.sh"), false);
+				CmdUtil.run(new String[]{"chmod", "+x", "./update.sh"}, dir);
+				String cmd[] = { "./update.sh", "@" + code, pid, "bilibili.log" }; // 最后一个为log，可以为/dev/null
+				if(!CmdUtil.run(cmd, dir)) {
+					JOptionPane.showMessageDialog(null, "update.sh运行失败。你需要赋予其可执行权限。\n请关闭程序，然后执行命令行：\nsudo chmod +x ./update.sh && ./update.sh", "!", JOptionPane.INFORMATION_MESSAGE);
+					return;
+				}
 			}
 			System.exit(1);
 		} catch (Exception e) {
@@ -160,6 +210,28 @@ public class VersionManagerUtil {
 		}
 	}
 	
+	public static void copy(InputStream rSource, File dest, boolean override) {
+		try {
+			if(dest.exists()) {
+				if(override)
+					dest.delete();
+				else
+					return;
+			}
+			RandomAccessFile rDest = new RandomAccessFile(dest, "rw");
+			
+			byte[] buffer = new byte[1024*1024];
+			int size = rSource.read(buffer);
+			while(size != -1) {
+				rDest.write(buffer, 0, size);
+				size = rSource.read(buffer);
+			}
+			rSource.close();
+			rDest.close();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
 	/**
 	 * 
 	 * 1. shell脚本以当前类为入口运行jar

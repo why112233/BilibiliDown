@@ -36,15 +36,27 @@ public class M4SDownloader extends FLVDownloader{
 	public boolean download(String url, String avId, int qn, int page) {
 		convertingStatus = StatusEnum.NONE;
 		HttpHeaders header = new HttpHeaders();
+		boolean audioOnly = url.startsWith("#");
 		String links[] = url.split("#");
+		for(int i=0; i<links.length; i++) {
+			links[i] = tryBetterUrl(links[i]);
+		}
 		String fName = avId + "-" + qn + "-p" + page;
-		String suffix = ".mp4";
+		String suffix = audioOnly? Global.suffix4AudioOnly : ".mp4";  // mp4 / aac / flac
 		String videoName = fName + "_video.m4s";
 		String audioName = fName + "_audio.m4s";
 		String dstName = fName + suffix;
 		if(file == null) {
 			file = new File(Global.savePath, dstName);
 		}
+		if(audioOnly) {
+			if (util.download(links[1], audioName, header.getBiliWwwM4sHeaders(avId))) {
+				convertingStatus = StatusEnum.PROCESSING;
+				boolean result = CmdUtil.convert(null, audioName, dstName);
+				return throwErrorIfNotConvertOk(result, audioName);
+			}
+			return false;
+		} 
 		totalTaskCnt = 2;
 		if (util.download(links[0], videoName, header.getBiliWwwM4sHeaders(avId))) {
 			// 如下载成功，统计数据后重置
@@ -55,13 +67,10 @@ public class M4SDownloader extends FLVDownloader{
 				return false;
 			util.init();
 			if(links.length == 1 || links[1].isEmpty()) {
+				totalTaskCnt = currentTask = 1;
 				convertingStatus = StatusEnum.PROCESSING;
 				boolean result = CmdUtil.convert(videoName, null, dstName);
-				if (result)
-					convertingStatus = StatusEnum.SUCCESS;
-				else
-					convertingStatus = StatusEnum.FAIL;
-				return result;
+				return throwErrorIfNotConvertOk(result, videoName);
 			}else if (util.download(links[1], audioName, header.getBiliWwwM4sHeaders(avId))) {
 				// 如下载成功，统计数据后重置
 				sumSuccessDownloaded += util.getTotalFileSize();
@@ -69,12 +78,7 @@ public class M4SDownloader extends FLVDownloader{
 				// 下载完毕后,进行合并
 				convertingStatus = StatusEnum.PROCESSING;
 				boolean result = CmdUtil.convert(videoName, audioName, dstName);
-				if (result) {
-					convertingStatus = StatusEnum.SUCCESS;
-				} else {
-					convertingStatus = StatusEnum.FAIL;
-				}
-				return result;
+				return throwErrorIfNotConvertOk(result, dstName);
 			}
 			return false;
 		}

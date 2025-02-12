@@ -19,11 +19,13 @@ import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 
-
+import nicelee.bilibili.enums.AudioQualityEnum;
 import nicelee.bilibili.enums.VideoQualityEnum;
 import nicelee.bilibili.model.ClipInfo;
 import nicelee.bilibili.model.VideoInfo;
 import nicelee.bilibili.util.Logger;
+import nicelee.bilibili.util.ResourcesUtil;
+import nicelee.bilibili.util.custom.System;
 import nicelee.ui.Global;
 import nicelee.ui.TabVideo;
 import nicelee.ui.thread.DownloadRunnable;
@@ -52,7 +54,7 @@ public class ClipInfoPanel extends JPanel implements MouseListener {
 		this.setBorder(BorderFactory.createLineBorder(Color.red));
 		this.setPreferredSize(new Dimension(340, 170));
 		// 分情况显示
-		boolean isPic = clip.getAvId().startsWith("h");
+		boolean isPic = ResourcesUtil.isPicture(clip);
 		if(clip.getListName() != null || isPic) {
 			labelTitle = new JLabel(clip.getRemark() + " - " + clip.getAvTitle()+ " " +clip.getTitle(), JLabel.CENTER);
 		}else {
@@ -81,10 +83,14 @@ public class ClipInfoPanel extends JPanel implements MouseListener {
 		}
 		
 		for (final int qn : clip.getLinks().keySet()) {
+			if(qn >= 800)
+				continue;
 			// JButton btn = new JButton("清晰度: " + qn);
 			String qnName = VideoQualityEnum.getQualityDescript(qn);
+			if (qnName == null)
+				qnName = AudioQualityEnum.getQualityDescript(qn);
 			JButton btn = null;
-			if (qnName != null) {
+			if (qnName != null && !isPic) {
 				btn = new MJButton(qnName);
 			} else {
 				btn = new MJButton("清晰度: " + qn);
